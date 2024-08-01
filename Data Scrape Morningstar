@@ -1,0 +1,68 @@
+
+
+import requests
+import json
+import pandas as pd
+import os
+
+# Define the directory to save the CSV files
+output_dir = "location to save file"
+
+# Create the directory if it doesn't exist
+os.makedirs(output_dir, exist_ok=True)
+
+# Bearer token from your request headers
+bearer_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ik1EY3hOemRHTnpGRFJrSTRPRGswTmtaRU1FSkdOekl5TXpORFJrUTROemd6TWtOR016bEdOdyJ9.eyJodHRwczovL21vcm5pbmdzdGFyLmNvbS9tc3Rhcl9pZCI6IjlGNDZBMTM1LUY2M0MtNEIzQi1BNUZDLTk3QTZEMjM2RDlDQiIsImh0dHBzOi8vbW9ybmluZ3N0YXIuY29tL3Bhc3N3b3JkQ2hhbmdlUmVxdWlyZWQiOmZhbHNlLCJodHRwczovL21vcm5pbmdzdGFyLmNvbS9lbWFpbCI6Imlpc2l0ZXNxdWFkQG1vcm5pbmdzdGFyLmNvbSIsImh0dHBzOi8vbW9ybmluZ3N0YXIuY29tL3JvbGUiOlsiRGV2Uy5XRkVBUEkiLCJEbmFsYWIuRGlyZWN0VXNlcnMiLCJFQy5BUEkuUmVwb3J0IiwiRUMuU2VydmljZS5Db25maWd1cmF0aW9uIiwiRUNVUy5BUEkuQXV0b2NvbXBsZXRlIiwiRUNVUy5BUEkuU2NyZWVuZXIiLCJFQ1VTLkFQSS5TZWN1cml0aWVzIiwiUEFBUElWMS5BbGwiLCJQQUFQSVYxLkNvcmUiLCJQQUFQSVYxLlByZW1pdW0uRVNHIiwicnBzYXBpLnB1Ymxpc2hlZCIsInJwc2FwaS51bnB1Ymxpc2hlZCJdLCJodHRwczovL21vcm5pbmdzdGFyLmNvbS9jb21wYW55X2lkIjoiZDhmOWE1NmUtMjhiZS00OGY0LWFlOTAtYzdiYTgzMzIwNTIwIiwiaHR0cHM6Ly9tb3JuaW5nc3Rhci5jb20vaW50ZXJuYWxfY29tcGFueV9pZCI6IkNsaWVudDAiLCJodHRwczovL21vcm5pbmdzdGFyLmNvbS9kYXRhX3JvbGUiOlsiQ0FQLmRuYWxhYi1kZWZhdWx0LXJvIiwiRUMuUmVwb3J0LkZhY3RzaGVldCIsIkVDLlJlcG9ydC5GdW5kQW5hbHlzdCIsIkVDLlJlcG9ydC5JbnZlc3RtZW50Q29tcGFyZSIsIkVDLlJlcG9ydC5TTUFBbmFseXN0IiwiRUMuUmVwb3J0LlN0b2NrQW5hbHlzdCIsIkVDLlJlcG9ydC5TdG9ja0FuYWx5c3QuUXVhbnQiLCJFQ1VTLkRhdGEuVVMuNTI5UG9ydGZvbGlvcyIsIkVDVVMuRGF0YS5VUy5Cb25kcyIsIkVDVVMuRGF0YS5VUy5DSVRzIiwiRUNVUy5EYXRhLlVTLkNsb3NlZEVuZEZ1bmRzIiwiRUNVUy5EYXRhLlVTLkV4Y2hhbmdlVHJhZGVkRnVuZHMiLCJFQ1VTLkRhdGEuVVMuSW5zdXJhbmNlRnVuZHMiLCJFQ1VTLkRhdGEuVVMuTW9uZXlNYXJrZXQiLCJFQ1VTLkRhdGEuVVMuT3BlbkVuZEZ1bmRzIiwiRUNVUy5EYXRhLlVTLlN0b2NrcyIsIkVDVVMuRGF0YS5VUy5Vbml0SW52ZXN0bWVudFRydXN0IiwiUEFBUElWMS5FU0cuQ2FyYm9uIiwiUEFBUElWMS5FU0cuRVNHUmlzayIsIlBBQVBJVjEuRVNHLlByb2R1Y3RJbnZvbHZlbWVudCIsIlFTLk1hcmtldHMiLCJRUy5QdWxscXMiLCJTQUwuU2VydmljZSJdLCJodHRwczovL21vcm5pbmdzdGFyLmNvbS9jb25maWdfaWQiOiJET1RDT01fRUMiLCJodHRwczovL21vcm5pbmdzdGFyLmNvbS91aW1fcm9sZXMiOiJFQU1TLERJUkVDVCxET1RfQ09NX0ZSRUUiLCJpc3MiOiJodHRwczovL2xvZ2luLXByb2QubW9ybmluZ3N0YXIuY29tLyIsInN1YiI6ImF1dGgwfDlGNDZBMTM1LUY2M0MtNEIzQi1BNUZDLTk3QTZEMjM2RDlDQiIsImF1ZCI6WyJodHRwczovL2F1dGgwLWF3c3Byb2QubW9ybmluZ3N0YXIuY29tL21hYXMiLCJodHRwczovL3VpbS1wcm9kLm1vcm5pbmdzdGFyLmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE3MjE3MzQ4ODMsImV4cCI6MTcyMTczODQ4Mywic2NvcGUiOiJvcGVuaWQiLCJndHkiOiJwYXNzd29yZCIsImF6cCI6ImlRa1d4b2FwSjlQeGw4Y0daTHlhWFpzYlhWNzlnNjRtIn0.RfPyi8F68baCuEa3O9v6PkeW6QRwYXMCVv4cBVVpr-VkRbTXISMzJknTo9X41MJ0hFA6uqmz4YkHxu_kwmmyr4h2wXXFJ9zEttP4OM3jh6kfWxl6kWcBBByVzPsoH73CJ6RJsRURvOdKMUwuHp_UQwXZRqhCqZyVLAyP5GiG8g5z7LSEP3zbgsPqw2Uls8xvXQZt51iyP8onyZ0dVYTCRxF9nlPriDZN-Fn_0iPnORgCOGSGK8WNL4LzX3vGnWFXkvnMsqCWWdmsJ05i4IUPDMGFu9Fcrzp8HLtM_-69OZleD5KaVbpyl_u1IISNJIyjTGBhzRKZ3WEtE8FApTg4cQ"
+
+# Headers might be needed to avoid blocking by the server
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
+    'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Authorization': f'Bearer {bearer_token}',
+    'Origin': 'https://www.morningstar.com',
+    'Referer': 'https://www.morningstar.com/cefs/xnys/awf/chart'
+}
+
+# Load the tickers from the CSV file
+tickers_csv_path = "/Users/rijadalibasic/Desktop/S/DataCEF/tickers.csv"
+tickers_df = pd.read_csv(tickers_csv_path)
+tickers = tickers_df['Ticker'].tolist()  # Assuming the column name in your CSV file is 'Ticker'
+
+# Function to fetch and save data for a given ticker
+def fetch_and_save_ticker_data(ticker):
+    url = f"https://www.us-api.morningstar.com/QS-markets/chartservice/v2/timeseries?query=F00000JY0S,14.1.{ticker}:close,nav,open,premiumDiscount&query=FCUSA0005A,14.1.ACP:open,high,low,close,volume,previousClose,nav&query=FCUSA0005A:dividend&frequency=d&startDate=1999-10-06&endDate=2024-07-22&trackMarketData=3.6.3&instid=DOTCOM"
+    response = requests.get(url, headers=headers)
+
+    # Checking if the request was successful
+    if response.status_code == 200:
+        try:
+            data = response.json()
+
+            # Process each ticker's data and save to CSV
+            for ticker_data in data:
+                if "series" in ticker_data:
+                    query_key = ticker_data["queryKey"]
+                    series = ticker_data["series"]
+                    
+                    # Convert the series data to a pandas DataFrame
+                    df = pd.DataFrame(series)
+                    
+                    # Save the DataFrame to a CSV file
+                    csv_filename = os.path.join(output_dir, f"{query_key}.csv")
+                    df.to_csv(csv_filename, index=False)
+                    
+                    print(f"Saved {csv_filename}")
+                else:
+                    print(f"No 'series' data found for ticker {ticker}.")
+        except json.JSONDecodeError:
+            print(f"Failed to decode JSON response for ticker {ticker}.")
+    else:
+        print(f"Failed to retrieve data for ticker {ticker}. Status code: {response.status_code}")
+        print(response.text)
+
+# Iterate through all tickers and fetch data
+for ticker in tickers:
+    fetch_and_save_ticker_data(ticker)
+
