@@ -1,0 +1,80 @@
+## LOCEF
+import pandas as pd
+import numpy as np
+
+# Define the file paths
+merged_weights_file = "Weight"
+price_data_file = "Open price data"
+dividends_data_file = "Dividen data"
+allocation_output_file = "/Users/rijadalibasic/Desktop/yehawtest/tLSCEFallocation.csv"
+shares_output_file = "/Users/rijadalibasic/Desktop/yehawtest/tLSCEFshares.csv"
+dividend_profit_output_file = "/Users/rijadalibasic/Desktop/yehawtest/tLSCEFdividend_profit.csv"
+
+# Define the capital to be allocated
+capital = 1000000  # Example capital amount
+
+# Load the merged weights data
+merged_df = pd.read_csv(merged_weights_file)
+
+# Load the price data
+price_df = pd.read_csv(price_data_file)
+
+# Load the dividends data
+dividends_df = pd.read_csv(dividends_data_file)
+
+# Convert the 'Date' columns to datetime
+merged_df['Date'] = pd.to_datetime(merged_df['Date'])
+price_df['Date'] = pd.to_datetime(price_df['Date'])
+dividends_df['Date'] = pd.to_datetime(dividends_df['Date'])
+
+# Shift the price data by -1 and the dividends data by -2
+price_df_shifted = price_df.copy()
+price_df_shifted.iloc[:, 1:] = price_df.iloc[:, 1:].shift(-1)
+
+dividends_df_shifted = dividends_df.copy()
+dividends_df_shifted.iloc[:, 1:] = dividends_df.iloc[:, 1:].shift(-2)
+
+# Merge the price data with the weight data on 'Date'
+combined_df = pd.merge(merged_df, price_df_shifted, on='Date', how='left', suffixes=('_weight', '_price'))
+
+# Initialize dictionaries to store the new columns for each file
+allocation_columns = {'Date': combined_df['Date']}
+shares_columns = {'Date': combined_df['Date']}
+dividend_profit_columns = {'Date': combined_df['Date']}
+
+# Iterate over the tickers in the weight DataFrame
+tickers = [col for col in merged_df.columns if col != 'Date']
+
+for ticker in tickers:
+    weight_col = f"{ticker}_weight"
+    price_col = f"{ticker}_price"
+    dividend_col = ticker
+    
+    if weight_col in combined_df.columns and price_col in combined_df.columns:
+        # Calculate the allocation
+        allocation_columns[f"{ticker}_allocation"] = combined_df[weight_col] * capital
+        # Calculate the number of shares, rounding down
+        shares_columns[f"{ticker}_shares"] = np.floor(allocation_columns[f"{ticker}_allocation"] / combined_df[price_col])
+        
+        # Check if the dividend column exists in the dividends DataFrame
+        if dividend_col in dividends_df_shifted.columns:
+            # Merge the dividends data
+            combined_df = pd.merge(combined_df, dividends_df_shifted[['Date', dividend_col]], on='Date', how='left')
+            combined_df.rename(columns={dividend_col: f"{ticker}_dividends"}, inplace=True)
+            
+            # Calculate the profit from dividends
+            dividend_profit_columns[f"{ticker}_dividend_profit"] = shares_columns[f"{ticker}_shares"] * combined_df[f"{ticker}_dividends"]
+
+# Combine all columns into separate DataFrames
+allocation_df = pd.DataFrame(allocation_columns)
+shares_df = pd.DataFrame(shares_columns)
+dividend_profit_df = pd.DataFrame(dividend_profit_columns)
+
+# Save each DataFrame to a separate CSV file
+allocation_df.to_csv(allocation_output_file, index=False)
+shares_df.to_csv(shares_output_file, index=False)
+dividend_profit_df.to_csv(dividend_profit_output_file, index=False)
+
+print(f"Allocation CSV saved to {allocation_output_file}")
+print(f"Shares CSV saved to {shares_output_file}")
+print(f"Dividend profit CSV saved to {dividend_profit_output_file}")
