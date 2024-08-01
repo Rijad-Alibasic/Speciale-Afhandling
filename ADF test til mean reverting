@@ -1,0 +1,42 @@
+import pandas as pd
+from statsmodels.tsa.stattools import adfuller
+
+# Indlæs data
+file_path = 'Discount_data.csv'
+data = pd.read_csv(file_path)
+
+# Fjern dato kolonnen
+data.set_index('Date', inplace=True)
+
+# Forbered en dictionary til at gemme resultaterne
+adf_results = {}
+
+# Iterer over hver kolonne og udfør ADF testen
+for column in data.columns:
+    series = data[column].dropna()  # Håndter manglende data ved at droppe dem
+    if len(series) > 0:  # Udfør kun testen hvis der er data tilgængelig
+        result = adfuller(series)
+        adf_results[column] = {
+            'ADF Statistic': result[0],
+            'p-value': result[1],
+            'Used Lag': result[2],
+            'Number of Observations Used': result[3],
+            'Critical Values': result[4]
+        }
+
+# Konverter resultaterne til en DataFrame
+adf_results_df = pd.DataFrame(adf_results).T
+
+# Gem resultaterne i en CSV-fil
+adf_results_df.to_csv('adf_test_results.csv')
+
+# Filtrer ikke-stationære serier baseret på p-værdi
+non_stationary_series = adf_results_df[adf_results_df['p-value'] > 0.05]
+
+# Tæl antallet af ikke-stationære serier
+non_stationary_count = len(non_stationary_series)
+
+# Gem de ikke-stationære serier i en ny CSV-fil
+non_stationary_series.to_csv('non_stationary_cefs.csv')
+
+print(f"Found {non_stationary_count} non-stationary CEFs. Results saved to non_stationary_cefs.csv")
