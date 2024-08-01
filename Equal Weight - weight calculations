@@ -1,0 +1,56 @@
+#with shift
+import pandas as pd
+
+def create_dynamic_weight_portfolio_with_returns(file_path, save_path_returns, save_path_weights):
+    # Load the data from a CSV file
+    data = pd.read_csv(file_path, index_col=0, parse_dates=True)
+    
+    # Shift the price data by -1 days
+    shifted_data = data.shift(-1)
+    
+    # Initialize the portfolio value and weights DataFrame
+    daily_weights = pd.DataFrame(index=shifted_data.index, columns=data.columns)
+    portfolio_returns = pd.Series(index=shifted_data.index)
+    
+    # Calculate the daily returns for each ticker based on the shifted data
+    daily_price_changes = shifted_data.pct_change().fillna(0)
+    
+    for date in shifted_data.index:
+        daily_prices = shifted_data.loc[date].dropna()
+        num_tickers = len(daily_prices)
+        if num_tickers > 0:
+            weights = [1/num_tickers] * num_tickers
+            daily_weights.loc[date, daily_prices.index] = weights
+            # Calculate the portfolio return for the day by summing the weighted daily returns
+            portfolio_returns[date] = daily_price_changes.loc[date, daily_prices.index].dot(weights)
+        else:
+            portfolio_returns[date] = 0
+    
+    # Fill NaN values in weights with 0
+    daily_weights = daily_weights.fillna(0)
+    
+    # Print the portfolio returns and daily weights
+    print("\nPortfolio returns over time:")
+    print(portfolio_returns)
+    
+    print("\nDaily weights over time:")
+    print(daily_weights)
+    
+    # Save the daily returns to a CSV file
+    portfolio_returns.to_csv(save_path_returns, header=['Daily Return'])
+    print(f"Daily returns saved to {save_path_returns}")
+    
+    # Save the daily weights to a CSV file
+    daily_weights.to_csv(save_path_weights)
+    print(f"Daily weights saved to {save_path_weights}")
+    
+    # Return the results as DataFrames for further analysis if needed
+    return portfolio_returns, daily_weights
+
+# Example usage
+file_path = '/Users/rijadalibasic/Desktop/S/DataCEF/CEf_open/Open_ready.csv'
+save_path_returns = '/Users/rijadalibasic/Desktop/S/11daily_returns.csv'  # Define the save path for returns
+save_path_weights = '/Users/rijadalibasic/Desktop/S/11daily_weights.csv'  # Define the save path for weights
+
+# Calculate and save the portfolio returns and daily weights
+portfolio_returns, daily_weights = create_dynamic_weight_portfolio_with_returns(file_path, save_path_returns, save_path_weights)
