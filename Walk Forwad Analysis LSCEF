@@ -1,0 +1,214 @@
+import os
+import pandas as pd
+import numpy as np
+
+# Load the datasets
+file_discount = 'discount-data'
+file_price = 'price-data'
+
+df_discount = pd.read_csv(file_discount, index_col=0, parse_dates=True)
+df_price = pd.read_csv(file_price, index_col=0, parse_dates=True)
+
+# Function to load and combine CEF data from CSV files
+def load_and_combine_cef_data():
+    # Since you already have the data loaded, we can return them directly
+    combined_discount = df_discount
+    combined_price = df_price
+    return combined_discount, combined_price
+
+# Function to calculate EMA
+def calculate_ema(data, periods):
+    alpha = 2 / (periods + 1)
+    return data.ewm(alpha=alpha).mean()
+
+# Function to calculate and cap weights for a reversal strategy
+def calculate_and_cap_weights(data, ema):
+    # Calculate the difference between actual data and EMA
+    diff = data - ema
+    
+    # Flatten the dataframe to get ticker and date combinations
+    diff_flat = diff.stack().reset_index()
+    diff_flat.columns = ['Date', 'Ticker', 'Difference']
+    
+    # Ensure 'Difference' column is numeric
+    diff_flat['Difference'] = pd.to_numeric(diff_flat['Difference'], errors='coerce')
+    
+    all_weights = []
+
+    # Process data for each unique date
+    # To make it LOCEF you remove the "positive_diff"
+    for date in diff_flat['Date'].unique():
+        daily_diff = diff_flat[diff_flat['Date'] == date]
+        
+        # Separate positive and negative differences
+        positive_diff = daily_diff[daily_diff['Difference'] > 0].nlargest(25, 'Difference')
+        negative_diff = daily_diff[daily_diff['Difference'] < 0].nsmallest(25, 'Difference')
+        
+        # Assign initial weights based on the absolute differences
+        positive_diff['Weight'] = positive_diff['Difference'].abs()
+        negative_diff['Weight'] = negative_diff['Difference'].abs()
+        
+        # Normalize the initial weights
+        total_positive_weight = positive_diff['Weight'].sum()
+        total_negative_weight = negative_diff['Weight'].sum()
+        
+        positive_diff['Weight'] = -positive_diff['Weight'] / total_positive_weight
+        negative_diff['Weight'] = negative_diff['Weight'] / total_negative_weight
+        
+        # Function to redistribute excess weight
+        def redistribute_excess(df, weight_cap=0.1):
+            df['Weight'] = df['Weight'].abs()
+            while df['Weight'].max() > weight_cap:
+                # Cap the weights at the specified limit and calculate the excess weight
+                df['Excess'] = df['Weight'].apply(lambda x: max(0, x - weight_cap))
+                excess = df['Excess'].sum()
+                excess_weight = excess
+                
+                # Cap the weights
+                df['Weight'] = df['Weight'].apply(lambda x: min(x, weight_cap))
+                
+                # Distribute the excess weight to the remaining tickers
+                remaining_df = df[df['Weight'] < weight_cap].copy()
+                if not remaining_df.empty:
+                    # Calculate proportions before updating the weights
+                    proportions = remaining_df['Weight'] / remaining_df['Weight'].sum()
+                    remaining_df['Weight'] += excess_weight * proportions
+                    df.update(remaining_df)
+                df = df.drop(columns=['Excess'])
+            return df
+        
+        # Cap and redistribute the positive weights
+        positive_diff = redistribute_excess(positive_diff)
+        positive_diff['Weight'] = -positive_diff['Weight'] 
+
+        
+        # Cap and redistribute the negative weights
+        negative_diff = redistribute_excess(negative_diff) 
+        
+        # Combine the weights
+        combined_weights = pd.concat([positive_diff, negative_diff])
+        
+        # Append the daily weights to the all_weights list
+        all_weights.append(combined_weights[['Date', 'Ticker', 'Weight']])
+
+    # Combine all daily weights into a single DataFrame
+    final_weights = pd.concat(all_weights)
+    
+    return final_weights
+
+# Function to calculate returns based on weights and price data
+def calculate_weighted_returns(weights, prices):
+    # Calculate daily returns
+    daily_returns = prices.pct_change().shift(-2)  # Shift to align with next day's return
+    
+    # Merge weights with daily returns
+    weights = weights.pivot(index='Date', columns='Ticker', values='Weight')
+    
+    # Multiply weights with returns to get weighted returns
+    weighted_returns = weights * daily_returns
+    
+    # Sum the weighted returns for each day to get the portfolio return
+    portfolio_returns = weighted_returns.sum(axis=1)
+    
+    return portfolio_returns
+
+# Function to calculate Sharpe Ratio
+def calculate_sharpe_ratio(returns, risk_free_rate=0.0):
+    excess_returns = returns - risk_free_rate
+    sharpe_ratio = excess_returns.mean() / excess_returns.std() * np.sqrt(252)  # Assuming daily returns
+    return sharpe_ratio
+
+# Function to calculate Maximum Drawdown
+def calculate_maximum_drawdown(returns):
+    cumulative_returns = (1 + returns).cumprod()
+    peak = cumulative_returns.cummax()
+    drawdown = (cumulative_returns - peak) / peak
+    max_drawdown = drawdown.min()
+    return max_drawdown
+
+# Load and combine discount and price data
+combined_discount_data, combined_price_data = load_and_combine_cef_data()
+
+# Walk forward analysis parameters
+train_period_years = 3
+test_period_years = 1
+total_years = combined_discount_data.index.year.max() - combined_discount_data.index.year.min() + 1
+period_length = pd.DateOffset(years=1)
+n_periods = total_years - train_period_years - test_period_years + 1
+
+# Container to store results and returns
+results = []
+all_returns = pd.DataFrame()
+all_weights_list = []
+
+# Walk forward loop
+for i in range(n_periods):
+    train_start = combined_discount_data.index.min() + i * period_length
+    train_end = train_start + pd.DateOffset(years=train_period_years) - pd.DateOffset(days=1)
+    test_start = train_end + pd.DateOffset(days=1)
+    test_end = test_start + pd.DateOffset(years=test_period_years) - pd.DateOffset(days=1)
+    
+    train_data = combined_discount_data[train_start:train_end]
+    test_data = combined_discount_data[test_start:test_end]
+    test_prices = combined_price_data[test_start:test_end]
+
+    # Find the optimal EMA period for the training data
+    best_sharpe_ratio = -np.inf
+    best_period = None
+
+    for period in range(3, 100):  # Example range of EMA periods to test
+        ema_data = calculate_ema(df_discount, period)
+        weights = calculate_and_cap_weights(train_data, ema_data)
+        portfolio_returns = calculate_weighted_returns(weights, combined_price_data[train_start:train_end])
+        sharpe_ratio = calculate_sharpe_ratio(portfolio_returns)
+
+        if sharpe_ratio > best_sharpe_ratio:
+            best_sharpe_ratio = sharpe_ratio
+            best_period = period
+
+    # Apply the best EMA period to the testing data
+    ema_data = calculate_ema(df_discount, best_period)
+    weights = calculate_and_cap_weights(test_data, ema_data)
+    portfolio_returns = calculate_weighted_returns(weights, test_prices)
+
+    # Store weights for each period
+    weights['Test Period'] = f'Test Period {i+1}'
+    all_weights_list.append(weights)
+
+    # Calculate performance metrics
+    sharpe_ratio = calculate_sharpe_ratio(portfolio_returns)
+    max_drawdown = calculate_maximum_drawdown(portfolio_returns)
+    
+    results.append({
+        'Train Start': train_start,
+        'Train End': train_end,
+        'Test Start': test_start,
+        'Test End': test_end,
+        'Best EMA Period': best_period,
+        'Sharpe Ratio': sharpe_ratio,
+        'Maximum Drawdown': max_drawdown
+    })
+    
+    # Append the returns for the current test period to all_returns DataFrame
+    all_returns = pd.concat([all_returns, portfolio_returns.rename(f'Test Period {i+1}')], axis=1)
+
+# Convert results to DataFrame
+results_df = pd.DataFrame(results)
+
+# Save results to a CSV file
+results_output_file_path = '/Users/rijadalibasic/Desktop/S/LSCEF_walk_forward_results_CLOSE.csv'
+results_df.to_csv(results_output_file_path, index=False)
+
+# Save all returns to a CSV file
+returns_output_file_path = '/Users/rijadalibasic/Desktop/S/LSCEF_walk_forward_returns_CLOSE.csv'
+all_returns.to_csv(returns_output_file_path)
+
+# Save all weights to a CSV file in wide format
+all_weights_df = pd.concat(all_weights_list).reset_index()
+weights_wide_df = all_weights_df.pivot(index='Date', columns='Ticker', values='Weight')
+weights_output_file_path = '/Users/rijadalibasic/Desktop/S/LSCEF_walk_forward_weights_CLOSE.csv'
+weights_wide_df.to_csv(weights_output_file_path)
+
+print(f"Walk forward analysis results saved to {results_output_file_path}")
+print(f"All test period returns saved to {returns_output_file_path}")
+print(f"All weights saved to {weights_output_file_path}")
