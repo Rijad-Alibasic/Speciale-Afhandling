@@ -1,0 +1,45 @@
+# Standard
+import pandas as pd
+import statsmodels.api as sm
+
+# Load your dataset
+data = pd.read_csv('Fama&French data')
+
+# Print the column names to verify the names
+print("Column names:", data.columns)
+
+# Print the first few rows to inspect the data
+print("First few rows:\n", data.head())
+
+# Create the lagged version of 'Mkt-RF'
+data['lagged_Mkt_RF'] = data['Mkt-RF'].shift(1)
+data['lagged_Mkt_RF2'] = data['Mkt-RF'].shift(2)
+
+
+# Drop rows with any NaN values
+data = data.dropna()
+
+# Verify that there are no NaN values
+print("Are there any NaN values? ", data.isna().sum().sum())
+
+# Define the independent variables (factors)
+X = data[['Mkt-RF', 'lagged_Mkt_RF','lagged_Mkt_RF2', 'SMB', 'HML']]
+
+# Verify the data types
+print("Data types of X:\n", X.dtypes)
+
+# Add a constant to the model (intercept)
+X = sm.add_constant(X)
+
+# Define the dependent variable (strategy return)
+y = data['Daily Return']
+
+# Verify the dimensions of X and y
+print("Shape of X:", X.shape)
+print("Shape of y:", y.shape)
+
+# Fit the regression model
+model = sm.OLS(y, X).fit()
+
+# Print the summary of the regression
+print(model.summary())
